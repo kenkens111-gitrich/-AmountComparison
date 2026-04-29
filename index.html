@@ -53,7 +53,7 @@
       <div class="flex items-center justify-between mb-2">
         <div class="flex items-center gap-2">
           <h1 class="text-base font-bold text-blue-600">単価比較スキャン</h1>
-          <button id="settingsBtn" class="p-1 rounded-full text-orange-500 bg-orange-100 animate-pulse transition-colors" title="API設定">
+          <button id="settingsBtn" class="p-1 rounded-full text-orange-500 bg-orange-100 animate-pulse transition-colors" title="詳細設定">
             <i class="ph ph-gear text-base"></i>
           </button>
         </div>
@@ -120,7 +120,7 @@
         </button>
       </div>
       <div class="p-5">
-        <!-- API Key (Visible Text) -->
+        <!-- API Key -->
         <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Gemini API Key</label>
         <input
           type="text"
@@ -129,21 +129,35 @@
           class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 mb-4 font-mono text-sm"
         />
 
-        <!-- Model Name -->
-        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase flex justify-between">
-          AI Model 
-          <a href="https://ai.google.dev/gemini-api/docs/models/gemini" target="_blank" class="text-blue-500 font-normal hover:underline flex items-center gap-0.5">
-            モデル一覧 <i class="ph ph-arrow-square-out"></i>
-          </a>
-        </label>
-        <input
-          type="text"
-          id="modelInput"
-          placeholder="gemini-2.5-flash-lite"
-          class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 mb-4 font-mono text-sm"
-        />
+        <div class="flex gap-4 mb-4">
+          <!-- Model Name -->
+          <div class="flex-1">
+            <label class="block text-xs font-bold text-gray-500 mb-1 uppercase flex justify-between">
+              AI Model 
+              <a href="https://ai.google.dev/gemini-api/docs/models/gemini" target="_blank" class="text-blue-500 font-normal hover:underline flex items-center gap-0.5">
+                <i class="ph ph-arrow-square-out"></i>
+              </a>
+            </label>
+            <input
+              type="text"
+              id="modelInput"
+              placeholder="gemini-2.5-flash-lite"
+              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 font-mono text-sm"
+            />
+          </div>
+          <!-- Tax Rate -->
+          <div class="w-24">
+            <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">税率 (%)</label>
+            <input
+              type="number"
+              id="taxRateInput"
+              placeholder="10"
+              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-center font-bold text-sm"
+            />
+          </div>
+        </div>
 
-        <div class="flex justify-end gap-2 mt-4">
+        <div class="flex justify-end gap-2 mt-2">
           <button id="cancelSettingsBtn" class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
             キャンセル
           </button>
@@ -230,6 +244,7 @@
     const saveSettingsBtn = document.getElementById('saveSettingsBtn');
     const apiKeyInput = document.getElementById('apiKeyInput');
     const modelInput = document.getElementById('modelInput');
+    const taxRateInput = document.getElementById('taxRateInput');
     const openCameraBtn = document.getElementById('openCameraBtn');
     const cameraOverlay = document.getElementById('cameraOverlay');
     const closeCameraBtn = document.getElementById('closeCameraBtn');
@@ -251,12 +266,14 @@
     const alertMessage = document.getElementById('alertMessage');
     const closeAlertBtn = document.getElementById('closeAlertBtn');
 
-    // デフォルトモデル定数
+    // 定数
     const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
+    const DEFAULT_TAX_RATE = 10;
 
     function init() {
       const savedKey = localStorage.getItem('gemini_api_key');
       const savedModel = localStorage.getItem('gemini_model') || DEFAULT_MODEL;
+      const savedTaxRate = localStorage.getItem('gemini_tax_rate') || DEFAULT_TAX_RATE;
       
       if (savedKey) {
         apiKeyInput.value = savedKey;
@@ -264,17 +281,14 @@
         settingsBtn.classList.add('text-gray-400', 'hover:bg-gray-100');
       }
       modelInput.value = savedModel;
+      taxRateInput.value = savedTaxRate;
       
       renderItems();
     }
 
-    function getApiKey() {
-      return localStorage.getItem('gemini_api_key');
-    }
-
-    function getModel() {
-      return localStorage.getItem('gemini_model') || DEFAULT_MODEL;
-    }
+    function getApiKey() { return localStorage.getItem('gemini_api_key'); }
+    function getModel() { return localStorage.getItem('gemini_model') || DEFAULT_MODEL; }
+    function getTaxRate() { return parseFloat(localStorage.getItem('gemini_tax_rate')) || DEFAULT_TAX_RATE; }
 
     function showToastMsg(message, type = 'success') {
       clearTimeout(toastTimeout);
@@ -307,9 +321,7 @@
     closeAlertBtn.addEventListener('click', () => {
       alertDialogContent.classList.remove('scale-100');
       alertDialogContent.classList.add('scale-95');
-      setTimeout(() => {
-        alertDialog.classList.add('hidden');
-      }, 200);
+      setTimeout(() => { alertDialog.classList.add('hidden'); }, 200);
     });
 
     function updateCameraUI() {
@@ -330,29 +342,40 @@
     }
 
     function renderItems() {
+      const currentTaxRate = getTaxRate();
+      const taxMultiplier = 1 + (currentTaxRate / 100);
       let minUnitPrice = Infinity;
+
       const processedItems = items.map(item => {
         const price = parseFloat(item.price);
         const q1 = parseFloat(item.qty1);
         let q2 = parseFloat(item.qty2);
         if (isNaN(q2)) q2 = 1;
-        let unitPrice = null;
-        let comparableUnitPrice = null;
+        
+        let displayUnitPrice = null; 
+        let comparableUnitPrice = null; 
         let unitPriceDisplayHtml = '<span class="text-gray-300">-</span>';
+
         if (!isNaN(price) && !isNaN(q1) && q1 > 0) {
           const totalQty = q1 * q2;
-          unitPrice = price / totalQty; 
-          comparableUnitPrice = item.isTaxExcluded ? unitPrice * 1.1 : unitPrice;
-          let formattedValue = parseFloat(unitPrice.toFixed(4)).toString();
+          const rawUnitPrice = price / totalQty; 
+          
+          // 税抜→税込チェックが入っている場合は、設定された税率で計算
+          displayUnitPrice = item.isTaxExcluded ? rawUnitPrice * taxMultiplier : rawUnitPrice;
+          comparableUnitPrice = displayUnitPrice;
+          
+          let formattedValue = parseFloat(displayUnitPrice.toFixed(4)).toString();
           let parts = formattedValue.split('.');
           let integerPart = parts[0];
           let decimalPart = parts[1] ? `.${parts[1]}` : '';
           unitPriceDisplayHtml = `<span class="text-2xl">${integerPart}</span><span class="text-sm">${decimalPart}</span><span class="text-[10px] ml-0.5">円</span>`;
+          
           if (comparableUnitPrice < minUnitPrice) minUnitPrice = comparableUnitPrice;
         }
-        return { ...item, unitPrice, comparableUnitPrice, unitPriceDisplayHtml };
+        return { ...item, displayUnitPrice, comparableUnitPrice, unitPriceDisplayHtml };
       });
-      const validItemCount = processedItems.filter(item => item.unitPrice !== null).length;
+
+      const validItemCount = processedItems.filter(item => item.displayUnitPrice !== null).length;
       itemsContainer.innerHTML = processedItems.map((item, index) => {
         const isCheapest = item.comparableUnitPrice !== null && item.comparableUnitPrice === minUnitPrice;
         const highlightClass = isCheapest && validItemCount > 1 ? 'cheapest-item border-l-4 border-l-blue-500' : 'bg-white border-b border-gray-100';
@@ -364,10 +387,13 @@
                 ${isCheapest && validItemCount > 1 ? '<i class="ph-fill ph-medal text-blue-500 text-sm"></i>' : ''}
                 <input type="text" value="${item.name}" onchange="updateItem(${index}, 'name', this.value)" class="w-full bg-transparent border-none outline-none text-[10px] text-gray-400 focus:text-gray-700 p-0 m-0" placeholder="商品名 ${index + 1}" ${isAnalyzing ? 'disabled' : ''}>
               </div>
+              
+              <!-- 表示変更: 税抜→税込 -->
               <label class="flex items-center gap-0.5 text-[9px] text-gray-400 mr-2 whitespace-nowrap cursor-pointer select-none">
                 <input type="checkbox" onchange="updateItem(${index}, 'isTaxExcluded', this.checked)" ${item.isTaxExcluded ? 'checked' : ''} ${isAnalyzing ? 'disabled' : ''} class="w-3 h-3 accent-red-500">
-                <span class="${item.isTaxExcluded ? 'text-red-500 font-bold' : ''}">税抜</span>
+                <span class="${item.isTaxExcluded ? 'text-red-500 font-bold' : ''}">税抜→税込</span>
               </label>
+
               <button onclick="clearRow(${index})" class="text-gray-300 hover:text-red-500 p-1 transition-colors" ${isAnalyzing ? 'disabled' : ''}>
                 <i class="ph ph-x text-sm"></i>
               </button>
@@ -388,7 +414,7 @@
               </div>
               <div class="flex-1 text-right flex flex-col justify-center">
                 <div class="flex items-center justify-end gap-1 mb-0.5">
-                   ${item.isTaxExcluded && item.unitPrice !== null ? `<span class="bg-red-100 text-red-600 text-[8px] px-1 py-0.5 rounded font-bold leading-none">税抜</span>` : ''}
+                   ${item.isTaxExcluded && item.displayUnitPrice !== null ? `<span class="bg-red-100 text-red-600 text-[8px] px-1 py-0.5 rounded font-bold leading-none">税込(${currentTaxRate}%)換算</span>` : ''}
                    <span class="text-[9px] text-gray-400 leading-none">1あたり</span>
                 </div>
                 <div class="font-bold leading-none ${nameTextClass}">
@@ -431,10 +457,14 @@
     saveSettingsBtn.addEventListener('click', () => {
       const apiKeyVal = apiKeyInput.value.trim();
       const modelVal = modelInput.value.trim() || DEFAULT_MODEL;
+      const taxRateVal = taxRateInput.value.trim() || DEFAULT_TAX_RATE;
       
       localStorage.setItem('gemini_api_key', apiKeyVal);
       localStorage.setItem('gemini_model', modelVal);
+      localStorage.setItem('gemini_tax_rate', taxRateVal);
+      
       settingsModal.classList.add('hidden');
+      renderItems(); // 計算を更新
       
       if(apiKeyVal) {
         settingsBtn.classList.remove('text-orange-500', 'bg-orange-100', 'animate-pulse');
@@ -455,23 +485,16 @@
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         videoElement.srcObject = stream;
-        videoElement.onloadedmetadata = () => {
-          videoElement.play().catch(e => {
-            console.error("再生エラー:", e);
-            showToastMsg("再生エラー。画面をタップしてください。", "error");
-          });
-        };
+        videoElement.onloadedmetadata = () => { videoElement.play(); };
       } catch (err) {
         console.error(err);
-        showToastMsg("カメラの起動に失敗しました。権限を確認してください。", "error");
+        showToastMsg("カメラの起動に失敗しました。", "error");
         closeCamera();
       }
     });
 
     function closeCamera() {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
+      if (stream) stream.getTracks().forEach(track => track.stop());
       videoElement.srcObject = null;
       cameraOverlay.classList.add('hidden');
       capturedImages = [];
@@ -488,12 +511,11 @@
       ctx.drawImage(videoElement, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
       const base64DataUrl = hiddenCanvas.toDataURL('image/jpeg', 0.8);
       const base64Image = base64DataUrl.split(',')[1];
-      if (base64Image.length < 1000) {
-        showToastMsg("カメラの映像が取得できていません。", "error");
-        return;
-      }
+      if (base64Image.length < 1000) return;
+      
       capturedImages.push(base64Image);
       updateCameraUI();
+      
       const flash = document.createElement('div');
       flash.className = 'absolute inset-0 bg-white opacity-0 transition-opacity duration-100 z-30 pointer-events-none';
       cameraViewArea.appendChild(flash);
@@ -518,17 +540,15 @@
       cameraLoading.classList.remove('hidden');
       shutterBtn.classList.add('opacity-30');
       analyzeBtn.classList.add('opacity-30');
-      
       const apiKey = getApiKey();
       const modelName = getModel();
-      
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
         const prompt = `あなたは価格・内容量読み取りAIです。提供された${capturedImages.length}枚の画像それぞれから情報を抽出してください。
         重要ルール:
-        1. 価格: 税込価格を最優先。数字のみ抽出。
+        1. 価格: 税込価格を最優先。数字のみ。
         2. 内容量: 「60m × 18ロール」なら qty1: 60, qty2: 18。
-        3. 税抜判定: 「+税」「本体価格」等があり、税込価格がない場合のみ isTaxExcluded を true に。
+        3. 税抜判定: 「+税」「本体価格」「税別」等があり、税込価格がない場合のみ isTaxExcluded を true に。
         4. エラー判定: 全く読み取れない場合のみ error を true に。
         結果は画像の順番通りのJSON配列で出力。`;
 
@@ -564,23 +584,15 @@
           body: JSON.stringify(payload)
         });
         const result = await res.json();
-        
         if (result.error) throw new Error(result.error.message);
-        
         const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!responseText) throw new Error("解析結果が空でした");
-        
         let parsedData = JSON.parse(responseText);
         if (!Array.isArray(parsedData)) parsedData = [parsedData];
 
-        let addedCount = 0;
-        let errorIndices = [];
         parsedData.forEach((data, idx) => {
             const imgIndex = data.index || (idx + 1);
-            if (data.error || !data.price || !data.qty1) {
-                errorIndices.push(imgIndex);
-                return; 
-            }
+            if (data.error || !data.price || !data.qty1) return; 
             const emptyIndex = items.findIndex(item => item.price === '' && item.qty1 === '');
             if (emptyIndex !== -1) {
               if (data.name) items[emptyIndex].name = data.name;
@@ -598,28 +610,12 @@
                 isTaxExcluded: data.isTaxExcluded || false
               });
             }
-            addedCount++;
         });
-
-        if (errorIndices.length > 0) {
-            const errorMsg = `${errorIndices.join(', ')}枚目の画像から価格・容量を読み取れませんでした。`;
-            if (addedCount > 0) showAlert(`${addedCount}件成功 / 一部エラー`, errorMsg);
-            else showAlert(`読み取り失敗`, errorMsg);
-        } else if (addedCount > 0) {
-            showToastMsg(`${addedCount}件の商品を追加しました！`, 'success');
-        } else {
-            showToastMsg(`読み取れる商品がありませんでした`, 'info');
-        }
+        showToastMsg("解析が完了しました", 'success');
         closeCamera();
       } catch (error) {
         console.error(error);
-        if (error.message.includes("API_KEY_INVALID")) {
-           showToastMsg("APIキーが無効です。設定を確認してください。", "error");
-           closeCamera();
-           settingsModal.classList.remove('hidden');
-        } else {
-           showToastMsg(`エラーが発生しました: ${error.message.substring(0, 30)}...`, "error");
-        }
+        showToastMsg(`エラー: ${error.message.substring(0, 20)}`, "error");
       } finally {
         isAnalyzing = false;
         cameraLoading.classList.add('hidden');
