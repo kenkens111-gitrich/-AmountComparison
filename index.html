@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>どれがお得？ 単価比較アプリ</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Phosphor Icons -->
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f3f4f6;
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    @keyframes bounce-short {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-15%); }
+    }
+    .animate-bounce-short {
+      animation: bounce-short 1s ease-in-out 3;
+    }
+    
+    @keyframes fade-in-down {
+      0% { opacity: 0; transform: translate(-50%, -20px); }
+      100% { opacity: 1; transform: translate(-50%, 0); }
+    }
+    .animate-fade-in-down {
+      animation: fade-in-down 0.3s ease-out forwards;
+    }
+
+    /* 最安値のハイライト */
+    .cheapest-item {
+      background-color: #eff6ff !important;
+      border-color: #3b82f6 !important;
+    }
+    
+    /* 数値入力のスピンボタンを隠す */
+    input[type="number"]::-webkit-inner-spin-button, 
+    input[type="number"]::-webkit-outer-spin-button { 
+      -webkit-appearance: none; 
+      margin: 0; 
+    }
+  </style>
+</head>
+<body class="text-gray-800 pb-32">
+
+  <div class="max-w-md mx-auto p-2">
+    
+    <!-- ヘッダー -->
+    <div class="bg-white rounded-xl shadow-sm p-3 mb-2">
+      <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center gap-2">
+          <h1 class="text-base font-bold text-blue-600">単価比較スキャン</h1>
+          <button id="settingsBtn" class="p-1 rounded-full text-orange-500 bg-orange-100 animate-pulse transition-colors" title="API設定">
+            <i class="ph ph-gear text-base"></i>
+          </button>
+        </div>
+        <button id="resetBtn" class="flex items-center justify-center gap-1 px-2 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded transition-colors text-xs font-medium">
+          <i class="ph ph-trash"></i> リセット
+        </button>
+      </div>
+
+      <!-- メインアクションボタン -->
+      <button id="openCameraBtn" class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all font-bold text-sm active:scale-95">
+        <i class="ph ph-scan text-xl"></i>
+        カメラで値札を連続スキャン
+      </button>
+    </div>
+
+    <!-- 比較リスト -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div id="itemsContainer" class="flex flex-col">
+        <!-- JavaScriptで動的に生成 -->
+      </div>
+      <div class="p-2 bg-gray-50 border-t border-gray-100">
+        <button id="addRowBtn" class="w-full py-2.5 border-2 border-dashed border-blue-200 text-blue-500 rounded-lg hover:bg-blue-100 font-bold text-sm transition-colors flex items-center justify-center gap-1 active:scale-[0.98]">
+          <i class="ph ph-plus-circle text-lg"></i> 行を追加
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- トースト通知 -->
+  <div id="toast" class="fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] flex items-center gap-2 px-5 py-3 rounded-full shadow-2xl text-sm font-bold animate-fade-in-down whitespace-nowrap hidden">
+    <i id="toastIcon" class="text-lg"></i>
+    <span id="toastText"></span>
+  </div>
+
+  <!-- API設定モーダル -->
+  <div id="settingsModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
+      <div class="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50">
+        <h2 class="font-bold text-gray-800 flex items-center gap-2">
+          <i class="ph ph-key text-gray-500"></i> APIキー設定
+        </h2>
+        <button id="closeSettingsBtn" class="text-gray-400 hover:text-gray-600">
+          <i class="ph ph-x text-xl"></i>
+        </button>
+      </div>
+      <div class="p-5">
+        <p class="text-xs text-gray-600 mb-4">
+          画像解析を利用するには、Google AI Studioで取得したGemini APIキーが必要です。<br>※キーはブラウザに保存されます。
+        </p>
+        <input
+          type="password"
+          id="apiKeyInput"
+          placeholder="AIzaSy..."
+          class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 mb-4 font-mono text-sm"
+        />
+        <div class="flex justify-end gap-2">
+          <button id="cancelSettingsBtn" class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+            キャンセル
+          </button>
+          <button id="saveSettingsBtn" class="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors">
+            保存
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 連続スキャン用オーバーレイ -->
+  <div id="cameraOverlay" class="fixed inset-0 z-50 bg-black flex flex-col hidden">
+    <div class="flex justify-between items-center p-4 bg-gradient-to-b from-black/80 to-transparent absolute top-0 left-0 right-0 z-10">
+      <div class="text-white">
+        <h2 class="font-bold text-base flex items-center gap-2"><i class="ph ph-scan"></i> 連続スキャン</h2>
+        <p class="text-[10px] text-gray-300">値札を枠に収めてシャッターを押してください</p>
+      </div>
+      <button id="closeCameraBtn" class="p-2 bg-white/20 rounded-full text-white hover:bg-white/40 backdrop-blur-sm transition-colors">
+        <i class="ph ph-x text-xl"></i>
+      </button>
+    </div>
+
+    <div class="flex-1 relative overflow-hidden flex items-center justify-center bg-gray-900">
+      <video id="videoElement" autoplay playsinline webkit-playsinline muted class="absolute min-w-full min-h-full object-cover"></video>
+      
+      <div class="absolute w-4/5 h-1/3 max-h-64 border-2 border-white/50 rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] flex items-center justify-center pointer-events-none">
+        <div class="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-green-400"></div>
+        <div class="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-green-400"></div>
+        <div class="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-green-400"></div>
+        <div class="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-green-400"></div>
+      </div>
+
+      <div id="cameraLoading" class="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center z-20 hidden">
+        <i class="ph ph-spinner-gap text-blue-400 text-5xl animate-spin mb-3"></i>
+        <p class="text-white font-bold text-base animate-pulse">価格と内容量を解析中...</p>
+      </div>
+    </div>
+
+    <div class="p-6 bg-black pb-12 flex justify-center items-center relative z-10">
+      <button id="shutterBtn" class="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center transition-transform active:scale-95">
+        <div class="w-16 h-16 bg-white rounded-full hover:bg-gray-200"></div>
+      </button>
+      <p class="absolute bottom-4 text-gray-400 text-[10px] text-center w-full">解析成功するとリストに自動追加されます</p>
+    </div>
+  </div>
+
+  <canvas id="hiddenCanvas" class="hidden"></canvas>
+
+  <script>
+    // --- 状態管理 ---
+    // 最初は5行用意する
+    let items = Array.from({ length: 5 }, (_, i) => ({
+      id: Date.now() + i,
+      name: '',
+      price: '',
+      qty1: '', // 容量 (例: 40m)
+      qty2: '', // 個数 (例: 18ロール)
+    }));
+    
+    let isAnalyzing = false;
+    let stream = null;
+    let toastTimeout = null;
+
+    // --- DOM要素 ---
+    const itemsContainer = document.getElementById('itemsContainer');
+    const resetBtn = document.getElementById('resetBtn');
+    
+    const settingsBtn = document.getElementById('settingsBtn');
+    const settingsModal = document.getElementById('settingsModal');
+    const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+    const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
+    const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    
+    const openCameraBtn = document.getElementById('openCameraBtn');
+    const cameraOverlay = document.getElementById('cameraOverlay');
+    const closeCameraBtn = document.getElementById('closeCameraBtn');
+    const videoElement = document.getElementById('videoElement');
+    const shutterBtn = document.getElementById('shutterBtn');
+    const hiddenCanvas = document.getElementById('hiddenCanvas');
+    const cameraLoading = document.getElementById('cameraLoading');
+    
+    const toast = document.getElementById('toast');
+    const toastIcon = document.getElementById('toastIcon');
+    const toastText = document.getElementById('toastText');
+
+    // --- 初期化 ---
+    function init() {
+      const savedKey = localStorage.getItem('gemini_api_key');
+      if (savedKey) {
+        apiKeyInput.value = savedKey;
+        settingsBtn.classList.remove('text-orange-500', 'bg-orange-100', 'animate-pulse');
+        settingsBtn.classList.add('text-gray-400', 'hover:bg-gray-100');
+      }
+      renderItems();
+    }
+
+    function getApiKey() {
+      return localStorage.getItem('gemini_api_key');
+    }
+
+    function showToastMsg(message, type = 'success') {
+      clearTimeout(toastTimeout);
+      toastText.textContent = message;
+      
+      toast.className = `fixed top-20 left-1/2 transform -translate-x-1/2 z-[60] flex items-center gap-2 px-5 py-3 rounded-full shadow-lg text-sm font-bold animate-fade-in-down whitespace-nowrap`;
+      
+      if (type === 'success') {
+        toast.classList.add('bg-green-600', 'text-white');
+        toastIcon.className = 'ph-fill ph-check-circle text-lg';
+      } else if (type === 'error') {
+        toast.classList.add('bg-red-500', 'text-white');
+        toastIcon.className = 'ph-fill ph-warning-circle text-lg';
+      }
+
+      toast.classList.remove('hidden');
+      toastTimeout = setTimeout(() => { toast.classList.add('hidden'); }, 3000);
+    }
+
+    // --- 描画処理 ---
+    function renderItems() {
+      let minUnitPrice = Infinity;
+      
+      // --- 各行の計算 ---
+      const processedItems = items.map(item => {
+        const price = parseFloat(item.price);
+        const q1 = parseFloat(item.qty1);
+        let q2 = parseFloat(item.qty2);
+        // 個数が空欄なら「1」として扱う
+        if (isNaN(q2)) q2 = 1;
+
+        let unitPrice = null;
+        let unitPriceDisplayHtml = '<span class="text-gray-300">-</span>';
+
+        if (!isNaN(price) && !isNaN(q1) && q1 > 0) {
+          const totalQty = q1 * q2;
+          unitPrice = price / totalQty; // 単価はJSで計算
+          
+          // フォーマット処理 (自然数大きく、小数は必要な分だけ)
+          let formattedValue = parseFloat(unitPrice.toFixed(4)).toString();
+          let parts = formattedValue.split('.');
+          let integerPart = parts[0];
+          let decimalPart = parts[1] ? `.${parts[1]}` : '';
+          
+          unitPriceDisplayHtml = `<span class="text-2xl">${integerPart}</span><span class="text-sm">${decimalPart}</span><span class="text-[10px] ml-0.5">円</span>`;
+          
+          if (unitPrice < minUnitPrice) minUnitPrice = unitPrice;
+        }
+        return { ...item, unitPrice, unitPriceDisplayHtml };
+      });
+
+      const validItemCount = processedItems.filter(item => item.unitPrice !== null).length;
+
+      // --- 3. HTMLの生成 ---
+      itemsContainer.innerHTML = processedItems.map((item, index) => {
+        const isCheapest = item.unitPrice !== null && item.unitPrice === minUnitPrice;
+        const highlightClass = isCheapest && validItemCount > 1 ? 'cheapest-item border-l-4 border-l-blue-500' : 'bg-white border-b border-gray-100';
+        const nameTextClass = isCheapest && validItemCount > 1 ? 'text-blue-600' : 'text-gray-800';
+        
+        return `
+          <div class="flex flex-col px-3 py-2 transition-colors ${highlightClass}">
+            
+            <!-- 1行目: 商品名 (極小) & 削除ボタン -->
+            <div class="flex items-center justify-between mb-0.5">
+              <div class="flex items-center gap-1 w-full mr-2">
+                ${isCheapest && validItemCount > 1 ? '<i class="ph-fill ph-medal text-blue-500 text-sm"></i>' : ''}
+                <input type="text" value="${item.name}" onchange="updateItem(${index}, 'name', this.value)" class="w-full bg-transparent border-none outline-none text-[10px] text-gray-400 focus:text-gray-700 p-0 m-0" placeholder="商品名 ${index + 1}" ${isAnalyzing ? 'disabled' : ''}>
+              </div>
+              <button onclick="clearRow(${index})" class="text-gray-300 hover:text-red-500 p-1 transition-colors" ${isAnalyzing ? 'disabled' : ''}>
+                <i class="ph ph-x text-sm"></i>
+              </button>
+            </div>
+
+            <!-- 2行目: 価格、容量 × 個数、単価結果 -->
+            <div class="flex items-center gap-1 mt-1">
+              <div class="w-[4.5rem]">
+                <input type="number" step="any" value="${item.price}" onchange="updateItem(${index}, 'price', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded p-1.5 text-sm font-medium focus:outline-blue-400 text-center placeholder-gray-400" placeholder="価格" ${isAnalyzing ? 'disabled' : ''}>
+              </div>
+              <div class="text-gray-300 text-xs font-bold">/</div>
+              
+              <div class="flex items-center gap-1">
+                <div class="w-[4.2rem]">
+                  <input type="number" step="any" value="${item.qty1}" onchange="updateItem(${index}, 'qty1', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded p-1.5 text-sm font-medium focus:outline-blue-400 text-center placeholder-gray-400" placeholder="容量" ${isAnalyzing ? 'disabled' : ''}>
+                </div>
+                <div class="text-gray-400 text-[10px]">×</div>
+                <div class="w-[3.2rem]">
+                  <input type="number" step="any" value="${item.qty2}" onchange="updateItem(${index}, 'qty2', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded p-1.5 text-sm font-medium focus:outline-blue-400 text-center placeholder-gray-300" placeholder="1" ${isAnalyzing ? 'disabled' : ''}>
+                </div>
+              </div>
+              
+              <!-- 単価表示エリア -->
+              <div class="flex-1 text-right flex flex-col justify-center">
+                <span class="text-[9px] text-gray-400 mb-0.5 leading-none">1あたり</span>
+                <div class="font-bold leading-none ${nameTextClass}">
+                  ${item.unitPriceDisplayHtml}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 入力値の変更時
+    window.updateItem = (index, field, value) => {
+      items[index][field] = value;
+      renderItems();
+    };
+
+    // 行のクリア（行ごと削除する）
+    window.clearRow = (index) => {
+      items.splice(index, 1);
+      renderItems();
+    };
+
+    // --- イベントリスナー ---
+    // 行を追加ボタン
+    document.getElementById('addRowBtn').addEventListener('click', () => {
+      items.push({ id: Date.now(), name: '', price: '', qty1: '', qty2: '' });
+      renderItems();
+    });
+
+    // リセットボタン（初期状態の5行に戻す）
+    resetBtn.addEventListener('click', () => {
+      items = Array.from({ length: 5 }, (_, i) => ({
+        id: Date.now() + i, name: '', price: '', qty1: '', qty2: ''
+      }));
+      renderItems();
+      showToastMsg("リセットしました", "success");
+    });
+
+    settingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
+    closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+    cancelSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+    saveSettingsBtn.addEventListener('click', () => {
+      const val = apiKeyInput.value.trim();
+      localStorage.setItem('gemini_api_key', val);
+      settingsModal.classList.add('hidden');
+      
+      if(val) {
+        settingsBtn.classList.remove('text-orange-500', 'bg-orange-100', 'animate-pulse');
+        settingsBtn.classList.add('text-gray-400', 'hover:bg-gray-100');
+        showToastMsg("APIキーを保存しました", "success");
+      }
+    });
+
+    // --- カメラ制御 ---
+    openCameraBtn.addEventListener('click', async () => {
+      if (!getApiKey()) {
+        settingsModal.classList.remove('hidden');
+        showToastMsg("先にAPIキーを設定してください", "error");
+        return;
+      }
+      cameraOverlay.classList.remove('hidden');
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        videoElement.srcObject = stream;
+        
+        videoElement.onloadedmetadata = () => {
+          videoElement.play().catch(e => {
+            console.error("再生エラー:", e);
+            showToastMsg("再生エラー。画面をタップしてください。", "error");
+          });
+        };
+      } catch (err) {
+        console.error(err);
+        showToastMsg("カメラの起動に失敗しました。権限を確認してください。", "error");
+        closeCamera();
+      }
+    });
+
+    closeCameraBtn.addEventListener('click', closeCamera);
+    
+    function closeCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      videoElement.srcObject = null;
+      cameraOverlay.classList.add('hidden');
+    }
+
+    shutterBtn.addEventListener('click', async () => {
+      if (isAnalyzing) return;
+      
+      hiddenCanvas.width = videoElement.videoWidth || 640;
+      hiddenCanvas.height = videoElement.videoHeight || 480;
+      const ctx = hiddenCanvas.getContext('2d');
+      ctx.drawImage(videoElement, 0, 0, hiddenCanvas.width, hiddenCanvas.height);
+      const base64DataUrl = hiddenCanvas.toDataURL('image/jpeg', 0.8);
+      const base64Image = base64DataUrl.split(',')[1];
+      
+      if (base64Image.length < 1000) {
+        showToastMsg("カメラの映像が取得できていません。", "error");
+        return;
+      }
+      
+      await executeAIAnalysis(base64Image, 'image/jpeg');
+    });
+
+    // --- AI解析 ---
+    async function executeAIAnalysis(base64Image, mimeType) {
+      isAnalyzing = true;
+      cameraLoading.classList.remove('hidden');
+      shutterBtn.classList.add('opacity-30');
+      renderItems(); 
+
+      const apiKey = getApiKey();
+
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+        const prompt = `あなたは価格・内容量読み取りAIです。提供された値札や商品の画像から、商品名、価格、内容量を抽出してください。
+        1. 価格: 税込と税抜が併記されている場合は、必ず「税込価格」の数値を抽出してください。数字のみ出力してください。
+        2. 内容量: 「60m × 18ロール」や「250W 5箱」などの記載がある場合、基本となる量(qty1)と、個数/ロール数など(qty2)に分けて抽出してください。
+           例1: 60m 18ロール -> qty1: 60, qty2: 18
+           例2: 250W 5箱 -> qty1: 250, qty2: 5
+           例3: 500ml -> qty1: 500, qty2: 1 (単一の数字ならqty2は1)
+        結果は以下のJSONスキーマに従って出力してください。
+        {
+          "name": "抽出した商品名（無い場合は空文字）",
+          "price": 価格の数値(半角数字のみ),
+          "qty1": 内容量の数値1(半角数字),
+          "qty2": 内容量の数値2(掛け合わせる数。無い場合は1)
+        }`;
+
+        const payload = {
+          contents: [{
+            role: "user",
+            parts: [
+              { text: prompt },
+              { inlineData: { mimeType: mimeType, data: base64Image } }
+            ]
+          }],
+          generationConfig: { responseMimeType: "application/json" }
+        };
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await res.json();
+
+        if (result.error) {
+           throw new Error(result.error.message);
+        }
+
+        const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!responseText) throw new Error("解析結果が空でした");
+
+        const parsedData = JSON.parse(responseText);
+
+        const emptyIndex = items.findIndex(item => item.price === '' && item.qty1 === '');
+        if (emptyIndex !== -1) {
+          if (parsedData.name) items[emptyIndex].name = parsedData.name;
+          if (parsedData.price) items[emptyIndex].price = String(parsedData.price);
+          if (parsedData.qty1) items[emptyIndex].qty1 = String(parsedData.qty1);
+          if (parsedData.qty2 && parsedData.qty2 != 1) items[emptyIndex].qty2 = String(parsedData.qty2);
+          
+          showToastMsg(`「${parsedData.name || 'スキャン成功'}」を追加しました！`, 'success');
+        } else {
+          // 万が一空行がない場合は追加する
+          items.push({
+            id: Date.now(),
+            name: parsedData.name || '',
+            price: String(parsedData.price || ''),
+            qty1: String(parsedData.qty1 || ''),
+            qty2: (parsedData.qty2 && parsedData.qty2 != 1) ? String(parsedData.qty2) : ''
+          });
+          showToastMsg(`スキャン成功しました！`, 'success');
+        }
+
+      } catch (error) {
+        console.error(error);
+        if (error.message.includes("API_KEY_INVALID")) {
+           showToastMsg("APIキーが無効です。設定を確認してください。", "error");
+           closeCamera();
+           settingsModal.classList.remove('hidden');
+        } else {
+           showToastMsg("読み取りに失敗しました。画像が不鮮明かもしれません。", "error");
+        }
+      } finally {
+        isAnalyzing = false;
+        cameraLoading.classList.add('hidden');
+        shutterBtn.classList.remove('opacity-30');
+        renderItems();
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
