@@ -68,9 +68,8 @@
         カメラで値札をまとめ撮り
       </button>
       
-      <!-- テスト用ヒント（PC撮影時など） -->
       <p class="text-[10px] text-gray-400 mt-2 text-center">
-        <i class="ph ph-info"></i> PC画面を撮る際は、少し離れてズームすると読み取りやすくなります。
+        <i class="ph ph-info"></i> まとめて撮影して一気に解析できます
       </p>
     </div>
 
@@ -109,40 +108,54 @@
     </div>
   </div>
 
-  <!-- API設定モーダル -->
+  <!-- 詳細設定モーダル -->
   <div id="settingsModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 hidden">
     <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
       <div class="flex justify-between items-center p-4 border-b border-gray-100 bg-gray-50">
         <h2 class="font-bold text-gray-800 flex items-center gap-2">
-          <i class="ph ph-key text-gray-500"></i> APIキー設定
+          <i class="ph ph-gear text-gray-500"></i> 詳細設定
         </h2>
         <button id="closeSettingsBtn" class="text-gray-400 hover:text-gray-600">
           <i class="ph ph-x text-xl"></i>
         </button>
       </div>
       <div class="p-5">
-        <p class="text-xs text-gray-600 mb-4">
-          画像解析を利用するには、Google AI Studioで取得したGemini APIキーが必要です。<br>※キーはブラウザに保存されます。
-        </p>
+        <!-- API Key (Visible Text) -->
+        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase">Gemini API Key</label>
         <input
-          type="password"
+          type="text"
           id="apiKeyInput"
           placeholder="AIzaSy..."
           class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 mb-4 font-mono text-sm"
         />
-        <div class="flex justify-end gap-2">
+
+        <!-- Model Name -->
+        <label class="block text-xs font-bold text-gray-500 mb-1 uppercase flex justify-between">
+          AI Model 
+          <a href="https://ai.google.dev/gemini-api/docs/models/gemini" target="_blank" class="text-blue-500 font-normal hover:underline flex items-center gap-0.5">
+            モデル一覧 <i class="ph ph-arrow-square-out"></i>
+          </a>
+        </label>
+        <input
+          type="text"
+          id="modelInput"
+          placeholder="gemini-2.5-flash-lite"
+          class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 mb-4 font-mono text-sm"
+        />
+
+        <div class="flex justify-end gap-2 mt-4">
           <button id="cancelSettingsBtn" class="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
             キャンセル
           </button>
           <button id="saveSettingsBtn" class="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors">
-            保存
+            設定を保存
           </button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- 連続スキャン用オーバーレイ -->
+  <!-- 撮影用オーバーレイ -->
   <div id="cameraOverlay" class="fixed inset-0 z-50 bg-black flex flex-col hidden">
     <div class="flex justify-between items-center p-4 bg-gradient-to-b from-black/80 to-transparent absolute top-0 left-0 right-0 z-10">
       <div class="text-white">
@@ -154,50 +167,38 @@
       </button>
     </div>
 
-    <!-- カメラ領域 -->
     <div class="flex-1 relative overflow-hidden flex items-center justify-center bg-gray-900" id="cameraViewArea">
       <video id="videoElement" autoplay playsinline webkit-playsinline muted class="absolute min-w-full min-h-full object-cover"></video>
-      
-      <!-- ガイド枠 -->
       <div class="absolute w-4/5 h-1/3 max-h-64 border-2 border-white/50 rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] flex items-center justify-center pointer-events-none">
         <div class="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-green-400"></div>
         <div class="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-green-400"></div>
         <div class="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-green-400"></div>
         <div class="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-green-400"></div>
       </div>
-
-      <!-- 解析中ローディング -->
       <div id="cameraLoading" class="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center z-20 hidden">
         <i class="ph ph-spinner-gap text-blue-400 text-5xl animate-spin mb-3"></i>
         <p class="text-white font-bold text-base animate-pulse">まとめて解析中...</p>
       </div>
     </div>
 
-    <!-- カメラ操作領域 (下部) -->
     <div class="p-6 bg-black pb-12 flex items-center justify-between relative z-10">
-      <!-- 撮影枚数 -->
       <div class="w-1/3 flex justify-start pl-2">
          <div id="imageCountBadge" class="hidden flex-col items-center justify-center text-white">
             <span class="text-2xl font-bold leading-none text-blue-400" id="capturedCount">0</span>
             <span class="text-[10px] text-gray-400 mt-1">枚撮影済</span>
          </div>
       </div>
-      
-      <!-- シャッターボタン -->
       <div class="w-1/3 flex justify-center">
         <button id="shutterBtn" class="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center transition-transform active:scale-95 relative">
           <div class="w-16 h-16 bg-white rounded-full hover:bg-gray-200"></div>
         </button>
       </div>
-      
-      <!-- 解析実行ボタン -->
       <div class="w-1/3 flex justify-end pr-2">
         <button id="analyzeBtn" class="hidden flex-col items-center justify-center text-blue-400 hover:text-blue-300 transition-colors">
            <i class="ph-fill ph-check-circle text-4xl"></i>
            <span class="text-[10px] font-bold mt-1 text-white">解析する</span>
         </button>
       </div>
-      
       <p id="cameraHelperText" class="absolute bottom-4 text-gray-400 text-[10px] text-center w-full">シャッターを押して複数枚まとめて撮影できます</p>
     </div>
   </div>
@@ -228,6 +229,7 @@
     const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
     const saveSettingsBtn = document.getElementById('saveSettingsBtn');
     const apiKeyInput = document.getElementById('apiKeyInput');
+    const modelInput = document.getElementById('modelInput');
     const openCameraBtn = document.getElementById('openCameraBtn');
     const cameraOverlay = document.getElementById('cameraOverlay');
     const closeCameraBtn = document.getElementById('closeCameraBtn');
@@ -249,18 +251,29 @@
     const alertMessage = document.getElementById('alertMessage');
     const closeAlertBtn = document.getElementById('closeAlertBtn');
 
+    // デフォルトモデル定数
+    const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
+
     function init() {
       const savedKey = localStorage.getItem('gemini_api_key');
+      const savedModel = localStorage.getItem('gemini_model') || DEFAULT_MODEL;
+      
       if (savedKey) {
         apiKeyInput.value = savedKey;
         settingsBtn.classList.remove('text-orange-500', 'bg-orange-100', 'animate-pulse');
         settingsBtn.classList.add('text-gray-400', 'hover:bg-gray-100');
       }
+      modelInput.value = savedModel;
+      
       renderItems();
     }
 
     function getApiKey() {
       return localStorage.getItem('gemini_api_key');
+    }
+
+    function getModel() {
+      return localStorage.getItem('gemini_model') || DEFAULT_MODEL;
     }
 
     function showToastMsg(message, type = 'success') {
@@ -414,14 +427,19 @@
     settingsBtn.addEventListener('click', () => settingsModal.classList.remove('hidden'));
     closeSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
     cancelSettingsBtn.addEventListener('click', () => settingsModal.classList.add('hidden'));
+    
     saveSettingsBtn.addEventListener('click', () => {
-      const val = apiKeyInput.value.trim();
-      localStorage.setItem('gemini_api_key', val);
+      const apiKeyVal = apiKeyInput.value.trim();
+      const modelVal = modelInput.value.trim() || DEFAULT_MODEL;
+      
+      localStorage.setItem('gemini_api_key', apiKeyVal);
+      localStorage.setItem('gemini_model', modelVal);
       settingsModal.classList.add('hidden');
-      if(val) {
+      
+      if(apiKeyVal) {
         settingsBtn.classList.remove('text-orange-500', 'bg-orange-100', 'animate-pulse');
         settingsBtn.classList.add('text-gray-400', 'hover:bg-gray-100');
-        showToastMsg("APIキーを保存しました", "success");
+        showToastMsg("設定を保存しました", "success");
       }
     });
 
@@ -500,17 +518,19 @@
       cameraLoading.classList.remove('hidden');
       shutterBtn.classList.add('opacity-30');
       analyzeBtn.classList.add('opacity-30');
+      
       const apiKey = getApiKey();
+      const modelName = getModel();
+      
       try {
-        // モデル名を1.5-flashに修正して安定性を向上
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
-        const prompt = `あなたは価格・内容量読み取りAIです。提供された${capturedImages.length}枚の画像（値札や商品）から情報を抽出してください。
-        重要：画像がPCモニターやスマートフォンの画面を直接撮影したもので、モアレ（縞模様）や反射があっても、可能な限り粘り強く文字を判別してください。
-        1. 価格: 税込価格を優先してください。数字のみ抽出。
-        2. 内容量: 「60m × 18ロール」なら qty1: 60, qty2: 18。単一数値なら qty2: 1。
-        3. 税抜判定: 税込価格がなく、明記された「税抜価格」や「+税」しかない場合のみ isTaxExcluded を true に。
-        4. 不鮮明な場合: どうしても読み取れない場合のみ error を true にしてください。
-        結果は画像の順番通りのJSON配列で出力してください。`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+        const prompt = `あなたは価格・内容量読み取りAIです。提供された${capturedImages.length}枚の画像それぞれから情報を抽出してください。
+        重要ルール:
+        1. 価格: 税込価格を最優先。数字のみ抽出。
+        2. 内容量: 「60m × 18ロール」なら qty1: 60, qty2: 18。
+        3. 税抜判定: 「+税」「本体価格」等があり、税込価格がない場合のみ isTaxExcluded を true に。
+        4. エラー判定: 全く読み取れない場合のみ error を true に。
+        結果は画像の順番通りのJSON配列で出力。`;
 
         const parts = [{ text: prompt }];
         capturedImages.forEach(img => {
@@ -544,9 +564,12 @@
           body: JSON.stringify(payload)
         });
         const result = await res.json();
+        
         if (result.error) throw new Error(result.error.message);
+        
         const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!responseText) throw new Error("解析結果が空でした");
+        
         let parsedData = JSON.parse(responseText);
         if (!Array.isArray(parsedData)) parsedData = [parsedData];
 
@@ -579,7 +602,7 @@
         });
 
         if (errorIndices.length > 0) {
-            const errorMsg = `${errorIndices.join(', ')}枚目の画像が不鮮明（または画面の反射等）で読み取れませんでした。もう少し離れて撮ってみてください。`;
+            const errorMsg = `${errorIndices.join(', ')}枚目の画像から価格・容量を読み取れませんでした。`;
             if (addedCount > 0) showAlert(`${addedCount}件成功 / 一部エラー`, errorMsg);
             else showAlert(`読み取り失敗`, errorMsg);
         } else if (addedCount > 0) {
@@ -595,7 +618,7 @@
            closeCamera();
            settingsModal.classList.remove('hidden');
         } else {
-           showToastMsg("解析に失敗しました。通信環境や画像を確認してください。", "error");
+           showToastMsg(`エラーが発生しました: ${error.message.substring(0, 30)}...`, "error");
         }
       } finally {
         isAnalyzing = false;
