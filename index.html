@@ -65,7 +65,7 @@
       <!-- メインアクションボタン -->
       <button id="openCameraBtn" class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all font-bold text-sm active:scale-95">
         <i class="ph ph-scan text-xl"></i>
-        カメラで値札を連続スキャン
+        カメラで値札をまとめ撮り
       </button>
     </div>
 
@@ -86,6 +86,22 @@
   <div id="toast" class="fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] flex items-center gap-2 px-5 py-3 rounded-full shadow-2xl text-sm font-bold animate-fade-in-down whitespace-nowrap hidden">
     <i id="toastIcon" class="text-lg"></i>
     <span id="toastText"></span>
+  </div>
+
+  <!-- エラー報告用ダイアログ -->
+  <div id="alertDialog" class="fixed inset-0 z-[70] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden transform scale-95 transition-transform duration-200" id="alertDialogContent">
+      <div class="p-6 text-center">
+        <div class="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <i class="ph-fill ph-warning text-3xl text-yellow-500"></i>
+        </div>
+        <h3 class="text-lg font-bold text-gray-800 mb-2" id="alertTitle">一部読み取り失敗</h3>
+        <p class="text-sm text-gray-600 mb-6" id="alertMessage">メッセージ</p>
+        <button id="closeAlertBtn" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-md transition-colors active:scale-95">
+          確認
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- API設定モーダル -->
@@ -125,17 +141,19 @@
   <div id="cameraOverlay" class="fixed inset-0 z-50 bg-black flex flex-col hidden">
     <div class="flex justify-between items-center p-4 bg-gradient-to-b from-black/80 to-transparent absolute top-0 left-0 right-0 z-10">
       <div class="text-white">
-        <h2 class="font-bold text-base flex items-center gap-2"><i class="ph ph-scan"></i> 連続スキャン</h2>
-        <p class="text-[10px] text-gray-300">値札を枠に収めてシャッターを押してください</p>
+        <h2 class="font-bold text-base flex items-center gap-2"><i class="ph ph-scan"></i> まとめ撮り</h2>
+        <p class="text-[10px] text-gray-300">次々と撮影して一気に解析できます</p>
       </div>
       <button id="closeCameraBtn" class="p-2 bg-white/20 rounded-full text-white hover:bg-white/40 backdrop-blur-sm transition-colors">
         <i class="ph ph-x text-xl"></i>
       </button>
     </div>
 
-    <div class="flex-1 relative overflow-hidden flex items-center justify-center bg-gray-900">
+    <!-- カメラ領域 -->
+    <div class="flex-1 relative overflow-hidden flex items-center justify-center bg-gray-900" id="cameraViewArea">
       <video id="videoElement" autoplay playsinline webkit-playsinline muted class="absolute min-w-full min-h-full object-cover"></video>
       
+      <!-- ガイド枠 -->
       <div class="absolute w-4/5 h-1/3 max-h-64 border-2 border-white/50 rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] flex items-center justify-center pointer-events-none">
         <div class="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-green-400"></div>
         <div class="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-green-400"></div>
@@ -143,17 +161,39 @@
         <div class="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-green-400"></div>
       </div>
 
+      <!-- 解析中ローディング -->
       <div id="cameraLoading" class="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center z-20 hidden">
         <i class="ph ph-spinner-gap text-blue-400 text-5xl animate-spin mb-3"></i>
-        <p class="text-white font-bold text-base animate-pulse">価格と内容量を解析中...</p>
+        <p class="text-white font-bold text-base animate-pulse">まとめて解析中...</p>
       </div>
     </div>
 
-    <div class="p-6 bg-black pb-12 flex justify-center items-center relative z-10">
-      <button id="shutterBtn" class="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center transition-transform active:scale-95">
-        <div class="w-16 h-16 bg-white rounded-full hover:bg-gray-200"></div>
-      </button>
-      <p class="absolute bottom-4 text-gray-400 text-[10px] text-center w-full">解析成功するとリストに自動追加されます</p>
+    <!-- カメラ操作領域 (下部) -->
+    <div class="p-6 bg-black pb-12 flex items-center justify-between relative z-10">
+      <!-- 撮影枚数 -->
+      <div class="w-1/3 flex justify-start pl-2">
+         <div id="imageCountBadge" class="hidden flex-col items-center justify-center text-white">
+            <span class="text-2xl font-bold leading-none text-blue-400" id="capturedCount">0</span>
+            <span class="text-[10px] text-gray-400 mt-1">枚撮影済</span>
+         </div>
+      </div>
+      
+      <!-- シャッターボタン -->
+      <div class="w-1/3 flex justify-center">
+        <button id="shutterBtn" class="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center transition-transform active:scale-95 relative">
+          <div class="w-16 h-16 bg-white rounded-full hover:bg-gray-200"></div>
+        </button>
+      </div>
+      
+      <!-- 解析実行ボタン -->
+      <div class="w-1/3 flex justify-end pr-2">
+        <button id="analyzeBtn" class="hidden flex-col items-center justify-center text-blue-400 hover:text-blue-300 transition-colors">
+           <i class="ph-fill ph-check-circle text-4xl"></i>
+           <span class="text-[10px] font-bold mt-1 text-white">解析する</span>
+        </button>
+      </div>
+      
+      <p id="cameraHelperText" class="absolute bottom-4 text-gray-400 text-[10px] text-center w-full">シャッターを押して複数枚撮影できます</p>
     </div>
   </div>
 
@@ -161,15 +201,15 @@
 
   <script>
     // --- 状態管理 ---
-    // 最初は5行用意する
     let items = Array.from({ length: 5 }, (_, i) => ({
       id: Date.now() + i,
       name: '',
       price: '',
-      qty1: '', // 容量 (例: 40m)
-      qty2: '', // 個数 (例: 18ロール)
+      qty1: '',
+      qty2: '',
     }));
     
+    let capturedImages = []; // 撮影した画像のストック配列
     let isAnalyzing = false;
     let stream = null;
     let toastTimeout = null;
@@ -190,12 +230,24 @@
     const closeCameraBtn = document.getElementById('closeCameraBtn');
     const videoElement = document.getElementById('videoElement');
     const shutterBtn = document.getElementById('shutterBtn');
+    const analyzeBtn = document.getElementById('analyzeBtn');
     const hiddenCanvas = document.getElementById('hiddenCanvas');
     const cameraLoading = document.getElementById('cameraLoading');
+    const cameraViewArea = document.getElementById('cameraViewArea');
+    
+    const imageCountBadge = document.getElementById('imageCountBadge');
+    const capturedCount = document.getElementById('capturedCount');
+    const cameraHelperText = document.getElementById('cameraHelperText');
     
     const toast = document.getElementById('toast');
     const toastIcon = document.getElementById('toastIcon');
     const toastText = document.getElementById('toastText');
+
+    const alertDialog = document.getElementById('alertDialog');
+    const alertDialogContent = document.getElementById('alertDialogContent');
+    const alertTitle = document.getElementById('alertTitle');
+    const alertMessage = document.getElementById('alertMessage');
+    const closeAlertBtn = document.getElementById('closeAlertBtn');
 
     // --- 初期化 ---
     function init() {
@@ -224,22 +276,62 @@
       } else if (type === 'error') {
         toast.classList.add('bg-red-500', 'text-white');
         toastIcon.className = 'ph-fill ph-warning-circle text-lg';
+      } else if (type === 'info') {
+        toast.classList.add('bg-blue-600', 'text-white');
+        toastIcon.className = 'ph ph-info text-lg';
       }
 
       toast.classList.remove('hidden');
       toastTimeout = setTimeout(() => { toast.classList.add('hidden'); }, 3000);
     }
 
+    // ダイアログ表示機能
+    function showAlert(title, message) {
+      alertTitle.textContent = title;
+      alertMessage.innerHTML = message.replace(/\n/g, '<br>');
+      alertDialog.classList.remove('hidden');
+      setTimeout(() => {
+        alertDialogContent.classList.remove('scale-95');
+        alertDialogContent.classList.add('scale-100');
+      }, 10);
+    }
+
+    closeAlertBtn.addEventListener('click', () => {
+      alertDialogContent.classList.remove('scale-100');
+      alertDialogContent.classList.add('scale-95');
+      setTimeout(() => {
+        alertDialog.classList.add('hidden');
+      }, 200);
+    });
+
+    // --- カメラUIの更新 ---
+    function updateCameraUI() {
+      if (capturedImages.length > 0) {
+        imageCountBadge.classList.remove('hidden');
+        imageCountBadge.classList.add('flex');
+        capturedCount.textContent = capturedImages.length;
+        
+        analyzeBtn.classList.remove('hidden');
+        analyzeBtn.classList.add('flex');
+        cameraHelperText.textContent = "解析するボタンを押すとリストに追加されます";
+      } else {
+        imageCountBadge.classList.add('hidden');
+        imageCountBadge.classList.remove('flex');
+        
+        analyzeBtn.classList.add('hidden');
+        analyzeBtn.classList.remove('flex');
+        cameraHelperText.textContent = "シャッターを押して複数枚まとめて撮影できます";
+      }
+    }
+
     // --- 描画処理 ---
     function renderItems() {
       let minUnitPrice = Infinity;
       
-      // --- 各行の計算 ---
       const processedItems = items.map(item => {
         const price = parseFloat(item.price);
         const q1 = parseFloat(item.qty1);
         let q2 = parseFloat(item.qty2);
-        // 個数が空欄なら「1」として扱う
         if (isNaN(q2)) q2 = 1;
 
         let unitPrice = null;
@@ -247,9 +339,8 @@
 
         if (!isNaN(price) && !isNaN(q1) && q1 > 0) {
           const totalQty = q1 * q2;
-          unitPrice = price / totalQty; // 単価はJSで計算
+          unitPrice = price / totalQty; 
           
-          // フォーマット処理 (自然数大きく、小数は必要な分だけ)
           let formattedValue = parseFloat(unitPrice.toFixed(4)).toString();
           let parts = formattedValue.split('.');
           let integerPart = parts[0];
@@ -264,7 +355,6 @@
 
       const validItemCount = processedItems.filter(item => item.unitPrice !== null).length;
 
-      // --- 3. HTMLの生成 ---
       itemsContainer.innerHTML = processedItems.map((item, index) => {
         const isCheapest = item.unitPrice !== null && item.unitPrice === minUnitPrice;
         const highlightClass = isCheapest && validItemCount > 1 ? 'cheapest-item border-l-4 border-l-blue-500' : 'bg-white border-b border-gray-100';
@@ -272,8 +362,6 @@
         
         return `
           <div class="flex flex-col px-3 py-2 transition-colors ${highlightClass}">
-            
-            <!-- 1行目: 商品名 (極小) & 削除ボタン -->
             <div class="flex items-center justify-between mb-0.5">
               <div class="flex items-center gap-1 w-full mr-2">
                 ${isCheapest && validItemCount > 1 ? '<i class="ph-fill ph-medal text-blue-500 text-sm"></i>' : ''}
@@ -284,7 +372,6 @@
               </button>
             </div>
 
-            <!-- 2行目: 価格、容量 × 個数、単価結果 -->
             <div class="flex items-center gap-1 mt-1">
               <div class="w-[4.5rem]">
                 <input type="number" step="any" value="${item.price}" onchange="updateItem(${index}, 'price', this.value)" class="w-full bg-gray-50 border border-gray-200 rounded p-1.5 text-sm font-medium focus:outline-blue-400 text-center placeholder-gray-400" placeholder="価格" ${isAnalyzing ? 'disabled' : ''}>
@@ -301,7 +388,6 @@
                 </div>
               </div>
               
-              <!-- 単価表示エリア -->
               <div class="flex-1 text-right flex flex-col justify-center">
                 <span class="text-[9px] text-gray-400 mb-0.5 leading-none">1あたり</span>
                 <div class="font-bold leading-none ${nameTextClass}">
@@ -314,26 +400,22 @@
       }).join('');
     }
 
-    // 入力値の変更時
     window.updateItem = (index, field, value) => {
       items[index][field] = value;
       renderItems();
     };
 
-    // 行のクリア（行ごと削除する）
     window.clearRow = (index) => {
       items.splice(index, 1);
       renderItems();
     };
 
     // --- イベントリスナー ---
-    // 行を追加ボタン
     document.getElementById('addRowBtn').addEventListener('click', () => {
       items.push({ id: Date.now(), name: '', price: '', qty1: '', qty2: '' });
       renderItems();
     });
 
-    // リセットボタン（初期状態の5行に戻す）
     resetBtn.addEventListener('click', () => {
       items = Array.from({ length: 5 }, (_, i) => ({
         id: Date.now() + i, name: '', price: '', qty1: '', qty2: ''
@@ -365,6 +447,9 @@
         return;
       }
       cameraOverlay.classList.remove('hidden');
+      capturedImages = []; // 開くたびにリセット
+      updateCameraUI();
+
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
         videoElement.srcObject = stream;
@@ -390,9 +475,12 @@
       }
       videoElement.srcObject = null;
       cameraOverlay.classList.add('hidden');
+      capturedImages = [];
+      updateCameraUI();
     }
 
-    shutterBtn.addEventListener('click', async () => {
+    // シャッターボタン（ストック機能）
+    shutterBtn.addEventListener('click', () => {
       if (isAnalyzing) return;
       
       hiddenCanvas.width = videoElement.videoWidth || 640;
@@ -407,43 +495,85 @@
         return;
       }
       
-      await executeAIAnalysis(base64Image, 'image/jpeg');
+      // 画像を配列にストック
+      capturedImages.push(base64Image);
+      updateCameraUI();
+
+      // シャッターを切った演出 (フラッシュ)
+      const flash = document.createElement('div');
+      flash.className = 'absolute inset-0 bg-white opacity-0 transition-opacity duration-100 z-30 pointer-events-none';
+      cameraViewArea.appendChild(flash);
+      
+      requestAnimationFrame(() => {
+         flash.classList.remove('opacity-0');
+         flash.classList.add('opacity-80');
+         setTimeout(() => {
+             flash.classList.remove('opacity-80');
+             flash.classList.add('opacity-0');
+             setTimeout(() => flash.remove(), 100);
+         }, 50);
+      });
     });
 
-    // --- AI解析 ---
-    async function executeAIAnalysis(base64Image, mimeType) {
+    // 解析実行ボタン
+    analyzeBtn.addEventListener('click', () => {
+      if (capturedImages.length === 0 || isAnalyzing) return;
+      executeAIAnalysis();
+    });
+
+    // --- AI解析 (複数画像まとめて) ---
+    async function executeAIAnalysis() {
       isAnalyzing = true;
       cameraLoading.classList.remove('hidden');
       shutterBtn.classList.add('opacity-30');
-      renderItems(); 
+      analyzeBtn.classList.add('opacity-30');
 
       const apiKey = getApiKey();
 
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-        const prompt = `あなたは価格・内容量読み取りAIです。提供された値札や商品の画像から、商品名、価格、内容量を抽出してください。
+        
+        // 複数画像に対応するプロンプトとスキーマ
+        const prompt = `あなたは価格・内容量読み取りAIです。提供された${capturedImages.length}枚の画像それぞれについて、順番通りに商品名、価格、内容量を抽出してください。
         1. 価格: 税込と税抜が併記されている場合は、必ず「税込価格」の数値を抽出してください。数字のみ出力してください。
         2. 内容量: 「60m × 18ロール」や「250W 5箱」などの記載がある場合、基本となる量(qty1)と、個数/ロール数など(qty2)に分けて抽出してください。
            例1: 60m 18ロール -> qty1: 60, qty2: 18
            例2: 250W 5箱 -> qty1: 250, qty2: 5
            例3: 500ml -> qty1: 500, qty2: 1 (単一の数字ならqty2は1)
-        結果は以下のJSONスキーマに従って出力してください。
-        {
-          "name": "抽出した商品名（無い場合は空文字）",
-          "price": 価格の数値(半角数字のみ),
-          "qty1": 内容量の数値1(半角数字),
-          "qty2": 内容量の数値2(掛け合わせる数。無い場合は1)
-        }`;
+        3. 不鮮明で読み取れない画像がある場合は、その画像の "error" を true にしてください。
+        
+        結果は入力された画像の順番に合わせた長さ${capturedImages.length}の配列として出力してください。
+        各要素には "index" (1から始まる画像番号) を必ず含めてください。`;
+
+        // 複数画像をparts配列に詰める
+        const parts = [{ text: prompt }];
+        capturedImages.forEach(img => {
+            parts.push({ inlineData: { mimeType: 'image/jpeg', data: img } });
+        });
 
         const payload = {
           contents: [{
             role: "user",
-            parts: [
-              { text: prompt },
-              { inlineData: { mimeType: mimeType, data: base64Image } }
-            ]
+            parts: parts
           }],
-          generationConfig: { responseMimeType: "application/json" }
+          generationConfig: { 
+              responseMimeType: "application/json",
+              responseSchema: {
+                  type: "ARRAY",
+                  items: {
+                      type: "OBJECT",
+                      properties: {
+                          "index": { type: "INTEGER", description: "1から始まる画像の順番" },
+                          "name": { type: "STRING" },
+                          "price": { type: "NUMBER" },
+                          "qty1": { type: "NUMBER" },
+                          "qty2": { type: "NUMBER" },
+                          "error": { type: "BOOLEAN", description: "読み取れなかった場合はtrue" }
+                      },
+                      required: ["index", "error"]
+                  }
+              }
+          }
         };
 
         const res = await fetch(url, {
@@ -461,27 +591,60 @@
         const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!responseText) throw new Error("解析結果が空でした");
 
-        const parsedData = JSON.parse(responseText);
-
-        const emptyIndex = items.findIndex(item => item.price === '' && item.qty1 === '');
-        if (emptyIndex !== -1) {
-          if (parsedData.name) items[emptyIndex].name = parsedData.name;
-          if (parsedData.price) items[emptyIndex].price = String(parsedData.price);
-          if (parsedData.qty1) items[emptyIndex].qty1 = String(parsedData.qty1);
-          if (parsedData.qty2 && parsedData.qty2 != 1) items[emptyIndex].qty2 = String(parsedData.qty2);
-          
-          showToastMsg(`「${parsedData.name || 'スキャン成功'}」を追加しました！`, 'success');
-        } else {
-          // 万が一空行がない場合は追加する
-          items.push({
-            id: Date.now(),
-            name: parsedData.name || '',
-            price: String(parsedData.price || ''),
-            qty1: String(parsedData.qty1 || ''),
-            qty2: (parsedData.qty2 && parsedData.qty2 != 1) ? String(parsedData.qty2) : ''
-          });
-          showToastMsg(`スキャン成功しました！`, 'success');
+        let parsedData = JSON.parse(responseText);
+        
+        if (!Array.isArray(parsedData)) {
+            parsedData = [parsedData];
         }
+
+        let addedCount = 0;
+        let errorIndices = [];
+        
+        parsedData.forEach((data, idx) => {
+            // エラーフラグが立っている、または必須項目が読み取れていない場合
+            const imgIndex = data.index || (idx + 1);
+            if (data.error || !data.price || !data.qty1) {
+                errorIndices.push(imgIndex);
+                return; // 登録をスキップ
+            }
+            
+            // 空いている行を探す
+            const emptyIndex = items.findIndex(item => item.price === '' && item.qty1 === '');
+            if (emptyIndex !== -1) {
+              if (data.name) items[emptyIndex].name = data.name;
+              items[emptyIndex].price = String(data.price);
+              items[emptyIndex].qty1 = String(data.qty1);
+              if (data.qty2 && data.qty2 != 1) items[emptyIndex].qty2 = String(data.qty2);
+            } else {
+              // 空き行がなければ新規追加
+              items.push({
+                id: Date.now() + Math.random(),
+                name: data.name || '',
+                price: String(data.price),
+                qty1: String(data.qty1),
+                qty2: (data.qty2 && data.qty2 != 1) ? String(data.qty2) : ''
+              });
+            }
+            addedCount++;
+        });
+
+        // 成功とエラーの通知を切り分け
+        if (errorIndices.length > 0) {
+            const errorMsg = `${errorIndices.join(', ')}枚目の画像が不鮮明で読み取れませんでした。`;
+            if (addedCount > 0) {
+                showAlert(`${addedCount}件追加 / 一部エラー`, errorMsg);
+            } else {
+                showAlert(`読み取り失敗`, errorMsg);
+            }
+        } else {
+            if (addedCount > 0) {
+                showToastMsg(`${addedCount}件の商品を追加しました！`, 'success');
+            } else {
+                showToastMsg(`読み取れる商品がありませんでした`, 'info');
+            }
+        }
+
+        closeCamera();
 
       } catch (error) {
         console.error(error);
@@ -496,6 +659,7 @@
         isAnalyzing = false;
         cameraLoading.classList.add('hidden');
         shutterBtn.classList.remove('opacity-30');
+        analyzeBtn.classList.remove('opacity-30');
         renderItems();
       }
     }
