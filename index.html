@@ -207,9 +207,10 @@
       price: '',
       qty1: '',
       qty2: '',
+      isTaxExcluded: false, // 税抜フラグを追加
     }));
     
-    let capturedImages = []; // 撮影した画像のストック配列
+    let capturedImages = []; 
     let isAnalyzing = false;
     let stream = null;
     let toastTimeout = null;
@@ -285,7 +286,6 @@
       toastTimeout = setTimeout(() => { toast.classList.add('hidden'); }, 3000);
     }
 
-    // ダイアログ表示機能
     function showAlert(title, message) {
       alertTitle.textContent = title;
       alertMessage.innerHTML = message.replace(/\n/g, '<br>');
@@ -304,7 +304,6 @@
       }, 200);
     });
 
-    // --- カメラUIの更新 ---
     function updateCameraUI() {
       if (capturedImages.length > 0) {
         imageCountBadge.classList.remove('hidden');
@@ -335,11 +334,15 @@
         if (isNaN(q2)) q2 = 1;
 
         let unitPrice = null;
+        let comparableUnitPrice = null; // 比較判定用の単価
         let unitPriceDisplayHtml = '<span class="text-gray-300">-</span>';
 
         if (!isNaN(price) && !isNaN(q1) && q1 > 0) {
           const totalQty = q1 * q2;
           unitPrice = price / totalQty; 
+          
+          // 税抜の場合は、比較用単価を10%増しで計算して公平に比較する
+          comparableUnitPrice = item.isTaxExcluded ? unitPrice * 1.1 : unitPrice;
           
           let formattedValue = parseFloat(unitPrice.toFixed(4)).toString();
           let parts = formattedValue.split('.');
@@ -348,15 +351,15 @@
           
           unitPriceDisplayHtml = `<span class="text-2xl">${integerPart}</span><span class="text-sm">${decimalPart}</span><span class="text-[10px] ml-0.5">円</span>`;
           
-          if (unitPrice < minUnitPrice) minUnitPrice = unitPrice;
+          if (comparableUnitPrice < minUnitPrice) minUnitPrice = comparableUnitPrice;
         }
-        return { ...item, unitPrice, unitPriceDisplayHtml };
+        return { ...item, unitPrice, comparableUnitPrice, unitPriceDisplayHtml };
       });
 
       const validItemCount = processedItems.filter(item => item.unitPrice !== null).length;
 
       itemsContainer.innerHTML = processedItems.map((item, index) => {
-        const isCheapest = item.unitPrice !== null && item.unitPrice === minUnitPrice;
+        const isCheapest = item.comparableUnitPrice !== null && item.comparableUnitPrice === minUnitPrice;
         const highlightClass = isCheapest && validItemCount > 1 ? 'cheapest-item border-l-4 border-l-blue-500' : 'bg-white border-b border-gray-100';
         const nameTextClass = isCheapest && validItemCount > 1 ? 'text-blue-600' : 'text-gray-800';
         
@@ -367,6 +370,13 @@
                 ${isCheapest && validItemCount > 1 ? '<i class="ph-fill ph-medal text-blue-500 text-sm"></i>' : ''}
                 <input type="text" value="${item.name}" onchange="updateItem(${index}, 'name', this.value)" class="w-full bg-transparent border-none outline-none text-[10px] text-gray-400 focus:text-gray-700 p-0 m-0" placeholder="商品名 ${index + 1}" ${isAnalyzing ? 'disabled' : ''}>
               </div>
+              
+              <!-- 税抜切り替えチェックボックス -->
+              <label class="flex items-center gap-0.5 text-[9px] text-gray-400 mr-2 whitespace-nowrap cursor-pointer select-none">
+                <input type="checkbox" onchange="updateItem(${index}, 'isTaxExcluded', this.checked)" ${item.isTaxExcluded ? 'checked' : ''} ${isAnalyzing ? 'disabled' : ''} class="w-3 h-3 accent-red-500">
+                <span class="${item.isTaxExcluded ? 'text-red-500 font-bold' : ''}">税抜</span>
+              </label>
+
               <button onclick="clearRow(${index})" class="text-gray-300 hover:text-red-500 p-1 transition-colors" ${isAnalyzing ? 'disabled' : ''}>
                 <i class="ph ph-x text-sm"></i>
               </button>
@@ -389,7 +399,11 @@
               </div>
               
               <div class="flex-1 text-right flex flex-col justify-center">
-                <span class="text-[9px] text-gray-400 mb-0.5 leading-none">1あたり</span>
+                <div class="flex items-center justify-end gap-1 mb-0.5">
+                   <!-- 税抜バッジ -->
+                   ${item.isTaxExcluded && item.unitPrice !== null ? `<span class="bg-red-100 text-red-600 text-[8px] px-1 py-0.5 rounded font-bold leading-none">税抜</span>` : ''}
+                   <span class="text-[9px] text-gray-400 leading-none">1あたり</span>
+                </div>
                 <div class="font-bold leading-none ${nameTextClass}">
                   ${item.unitPriceDisplayHtml}
                 </div>
@@ -412,13 +426,13 @@
 
     // --- イベントリスナー ---
     document.getElementById('addRowBtn').addEventListener('click', () => {
-      items.push({ id: Date.now(), name: '', price: '', qty1: '', qty2: '' });
+      items.push({ id: Date.now(), name: '', price: '', qty1: '', qty2: '', isTaxExcluded: false });
       renderItems();
     });
 
     resetBtn.addEventListener('click', () => {
       items = Array.from({ length: 5 }, (_, i) => ({
-        id: Date.now() + i, name: '', price: '', qty1: '', qty2: ''
+        id: Date.now() + i, name: '', price: '', qty1: '', qty2: '', isTaxExcluded: false
       }));
       renderItems();
       showToastMsg("リセットしました", "success");
@@ -447,7 +461,7 @@
         return;
       }
       cameraOverlay.classList.remove('hidden');
-      capturedImages = []; // 開くたびにリセット
+      capturedImages = []; 
       updateCameraUI();
 
       try {
@@ -479,7 +493,6 @@
       updateCameraUI();
     }
 
-    // シャッターボタン（ストック機能）
     shutterBtn.addEventListener('click', () => {
       if (isAnalyzing) return;
       
@@ -495,11 +508,9 @@
         return;
       }
       
-      // 画像を配列にストック
       capturedImages.push(base64Image);
       updateCameraUI();
 
-      // シャッターを切った演出 (フラッシュ)
       const flash = document.createElement('div');
       flash.className = 'absolute inset-0 bg-white opacity-0 transition-opacity duration-100 z-30 pointer-events-none';
       cameraViewArea.appendChild(flash);
@@ -515,13 +526,12 @@
       });
     });
 
-    // 解析実行ボタン
     analyzeBtn.addEventListener('click', () => {
       if (capturedImages.length === 0 || isAnalyzing) return;
       executeAIAnalysis();
     });
 
-    // --- AI解析 (複数画像まとめて) ---
+    // --- AI解析 ---
     async function executeAIAnalysis() {
       isAnalyzing = true;
       cameraLoading.classList.remove('hidden');
@@ -533,19 +543,18 @@
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
         
-        // 複数画像に対応するプロンプトとスキーマ
         const prompt = `あなたは価格・内容量読み取りAIです。提供された${capturedImages.length}枚の画像それぞれについて、順番通りに商品名、価格、内容量を抽出してください。
-        1. 価格: 税込と税抜が併記されている場合は、必ず「税込価格」の数値を抽出してください。数字のみ出力してください。
+        1. 価格: 税込と税抜が併記されている場合は、必ず「税込価格」の数値を優先して抽出してください。数字のみ出力してください。
         2. 内容量: 「60m × 18ロール」や「250W 5箱」などの記載がある場合、基本となる量(qty1)と、個数/ロール数など(qty2)に分けて抽出してください。
            例1: 60m 18ロール -> qty1: 60, qty2: 18
            例2: 250W 5箱 -> qty1: 250, qty2: 5
            例3: 500ml -> qty1: 500, qty2: 1 (単一の数字ならqty2は1)
-        3. 不鮮明で読み取れない画像がある場合は、その画像の "error" を true にしてください。
+        3. 税抜判定: 価格が「税抜価格」や「+税」としか書かれておらず、税込価格が見当たらない場合のみ "isTaxExcluded" を true にしてください。税込価格を抽出できた場合は false にしてください。
+        4. 不鮮明で読み取れない画像がある場合は、その画像の "error" を true にしてください。
         
         結果は入力された画像の順番に合わせた長さ${capturedImages.length}の配列として出力してください。
         各要素には "index" (1から始まる画像番号) を必ず含めてください。`;
 
-        // 複数画像をparts配列に詰める
         const parts = [{ text: prompt }];
         capturedImages.forEach(img => {
             parts.push({ inlineData: { mimeType: 'image/jpeg', data: img } });
@@ -568,6 +577,7 @@
                           "price": { type: "NUMBER" },
                           "qty1": { type: "NUMBER" },
                           "qty2": { type: "NUMBER" },
+                          "isTaxExcluded": { type: "BOOLEAN", description: "税抜価格しか書かれていない場合はtrue" },
                           "error": { type: "BOOLEAN", description: "読み取れなかった場合はtrue" }
                       },
                       required: ["index", "error"]
@@ -601,34 +611,32 @@
         let errorIndices = [];
         
         parsedData.forEach((data, idx) => {
-            // エラーフラグが立っている、または必須項目が読み取れていない場合
             const imgIndex = data.index || (idx + 1);
             if (data.error || !data.price || !data.qty1) {
                 errorIndices.push(imgIndex);
-                return; // 登録をスキップ
+                return; 
             }
             
-            // 空いている行を探す
             const emptyIndex = items.findIndex(item => item.price === '' && item.qty1 === '');
             if (emptyIndex !== -1) {
               if (data.name) items[emptyIndex].name = data.name;
               items[emptyIndex].price = String(data.price);
               items[emptyIndex].qty1 = String(data.qty1);
               if (data.qty2 && data.qty2 != 1) items[emptyIndex].qty2 = String(data.qty2);
+              items[emptyIndex].isTaxExcluded = data.isTaxExcluded || false;
             } else {
-              // 空き行がなければ新規追加
               items.push({
                 id: Date.now() + Math.random(),
                 name: data.name || '',
                 price: String(data.price),
                 qty1: String(data.qty1),
-                qty2: (data.qty2 && data.qty2 != 1) ? String(data.qty2) : ''
+                qty2: (data.qty2 && data.qty2 != 1) ? String(data.qty2) : '',
+                isTaxExcluded: data.isTaxExcluded || false
               });
             }
             addedCount++;
         });
 
-        // 成功とエラーの通知を切り分け
         if (errorIndices.length > 0) {
             const errorMsg = `${errorIndices.join(', ')}枚目の画像が不鮮明で読み取れませんでした。`;
             if (addedCount > 0) {
